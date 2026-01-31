@@ -35,7 +35,10 @@ fn main() {
         .files(sources)
         .include(&include_dir)
         .include(&src_dir)
-        .flag_if_supported("-O3");
+        .flag_if_supported("-O3")
+        // Enforce zero warnings from vendored C on CI.
+        .flag_if_supported("-w")
+        .flag_if_supported("/W0");
 
     build.compile("silk_sdk");
 }

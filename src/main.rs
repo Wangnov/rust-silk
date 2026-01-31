@@ -3,7 +3,7 @@ use std::ffi::c_void;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::raw::{c_char, c_int, c_short, c_uchar};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const SILK_HEADER: &str = "#!SILK_V3";
 const TENCENT_PREFIX: u8 = 0x02;
@@ -532,7 +532,7 @@ fn decode(args: DecodeArgs) -> Result<(), String> {
         input
             .read_exact(&mut header)
             .map_err(|_| "invalid silk header")?;
-        if &header != SILK_HEADER.as_bytes() {
+        if header != SILK_HEADER.as_bytes() {
             return Err("invalid silk header".into());
         }
     } else {
@@ -540,7 +540,7 @@ fn decode(args: DecodeArgs) -> Result<(), String> {
         input
             .read_exact(&mut header)
             .map_err(|_| "invalid silk header")?;
-        if &header != &SILK_HEADER.as_bytes()[1..] {
+        if header != SILK_HEADER.as_bytes()[1..] {
             return Err("invalid silk header".into());
         }
     }
@@ -558,9 +558,11 @@ fn decode(args: DecodeArgs) -> Result<(), String> {
         }
     }
 
-    let mut dec_control = SKP_SILK_SDK_DecControlStruct::default();
-    dec_control.api_sample_rate = args.sample_rate;
-    dec_control.frames_per_packet = 1;
+    let mut dec_control = SKP_SILK_SDK_DecControlStruct {
+        api_sample_rate: args.sample_rate,
+        frames_per_packet: 1,
+        ..Default::default()
+    };
 
     let max_frame_samples = (MAX_FRAME_LENGTH_MS * MAX_API_FS_HZ / 1000) as usize;
     let mut out = vec![0i16; max_frame_samples];
@@ -792,7 +794,7 @@ impl OutputSink {
         reference: Option<Vec<i16>>,
     ) -> Result<Self, String> {
         let is_stdout = path.to_string_lossy() == "-";
-        let is_wav = force_wav || has_wav_extension(path);
+        let is_wav = force_wav || has_wav_extension(path.as_path());
         if is_stdout && is_wav {
             return Err("cannot write WAV to stdout".into());
         }
@@ -837,14 +839,14 @@ impl OutputSink {
                 let s = *sample as f64;
                 stats.energy += s * s;
                 stats.samples += 1;
-                if let Some(reference) = &stats.reference {
-                    if stats.ref_pos < reference.len() {
-                        let r = reference[stats.ref_pos] as f64;
-                        stats.ref_energy += r * r;
-                        let diff = r - s;
-                        stats.noise_energy += diff * diff;
-                        stats.ref_pos += 1;
-                    }
+                if let Some(reference) = &stats.reference
+                    && stats.ref_pos < reference.len()
+                {
+                    let r = reference[stats.ref_pos] as f64;
+                    stats.ref_energy += r * r;
+                    let diff = r - s;
+                    stats.noise_energy += diff * diff;
+                    stats.ref_pos += 1;
                 }
             }
         } else {
@@ -1102,7 +1104,7 @@ fn read_all_i16(mut reader: Box<dyn Read>) -> Result<Vec<i16>, String> {
         .collect())
 }
 
-fn has_wav_extension(path: &PathBuf) -> bool {
+fn has_wav_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| ext.eq_ignore_ascii_case("wav"))
