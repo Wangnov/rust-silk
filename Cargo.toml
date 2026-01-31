@@ -1,0 +1,24 @@
+[package]
+name = "rust-silk"
+version = "0.1.0"
+edition = "2024"
+description = "SILK v3 encoder/decoder with a practical CLI"
+license = "BSD-3-Clause"
+repository = "https://github.com/wangnov/rust-silk"
+readme = "README.md"
+keywords = ["silk", "audio", "codec", "voice"]
+categories = ["command-line-utilities", "multimedia::audio"]
+
+[dependencies]
+
+[build-dependencies]
+cc = "1.0"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
+strip = "symbols"
+
+[package.metadata.release]
+tag-name = "v{{version}}"
