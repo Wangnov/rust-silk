@@ -1,0 +1,33 @@
+{
+  "name": "rust-silk",
+  "version": "0.0.0-development",
+  "description": "SILK v3 encoder/decoder CLI distributed as platform-specific binaries",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wangnov/rust-silk.git"
+  },
+  "homepage": "https://github.com/wangnov/rust-silk",
+  "bugs": {
+    "url": "https://github.com/wangnov/rust-silk/issues"
+  },
+  "bin": {
+    "rust-silk": "bin/rust-silk.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "rust-silk-darwin-arm64": "0.0.0-development",
+    "rust-silk-darwin-x64": "0.0.0-development",
+    "rust-silk-linux-arm64-gnu": "0.0.0-development",
+    "rust-silk-linux-x64-gnu": "0.0.0-development",
+    "rust-silk-windows-x64-msvc": "0.0.0-development"
+  },
+  "publishConfig": {
+    "provenance": true
+  }
+}

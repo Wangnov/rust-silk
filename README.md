@@ -27,6 +27,12 @@ cargo install rust-silk
 cargo binstall rust-silk
 ```
 
+或通过 npm 安装预编译二进制：
+
+```bash
+npm install -g rust-silk
+```
+
 或从源码构建：
 
 ```bash
@@ -109,6 +115,12 @@ Or use cargo-binstall (install cargo-binstall first):
 
 ```bash
 cargo binstall rust-silk
+```
+
+Or install the prebuilt binary from npm:
+
+```bash
+npm install -g rust-silk
 ```
 
 Or build from source:

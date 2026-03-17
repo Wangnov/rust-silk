@@ -1,0 +1,21 @@
+{
+  "name": "rust-silk-linux-x64-gnu",
+  "version": "0.0.0-development",
+  "description": "Linux x64 GNU binary for rust-silk",
+  "license": "BSD-3-Clause",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "libc": [
+    "glibc"
+  ],
+  "files": [
+    "bin"
+  ],
+  "publishConfig": {
+    "provenance": true
+  }
+}

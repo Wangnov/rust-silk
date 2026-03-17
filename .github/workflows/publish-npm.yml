@@ -1,0 +1,57 @@
+name: Publish npm
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  publish-npm:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_VERSION: ${{ github.event.release.tag_name }}
+      DIST_ARTIFACT_DIR: artifacts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Download GitHub release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          gh release download "${RELEASE_VERSION}" --dir artifacts --pattern '*'
+
+      - name: Prepare npm packages
+        run: |
+          node scripts/prepare-npm-release.mjs
+
+      - name: Publish platform packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dir in \
+            npm/platforms/darwin-arm64 \
+            npm/platforms/darwin-x64 \
+            npm/platforms/linux-arm64-gnu \
+            npm/platforms/linux-x64-gnu \
+            npm/platforms/windows-x64-msvc
+          do
+            npm publish "$dir"
+          done
+
+      - name: Publish main package
+        run: |
+          npm publish npm/main
