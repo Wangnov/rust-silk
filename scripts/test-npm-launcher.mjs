@@ -33,8 +33,9 @@ assert.match(workflow, /publish-npm:/, "release workflow must define a publish-n
 assert.doesNotMatch(workflow, /NPM_TOKEN/, "trusted publishing workflow must not require NPM_TOKEN");
 assert.match(workflow, /node-version:\s*22/, "trusted publishing workflow must use Node 22");
 assert.match(workflow, /workflow_run:/, "trusted publishing workflow must be triggered by workflow_run");
+assert.match(workflow, /workflow_dispatch:/, "trusted publishing workflow must support manual dispatch for recovery publishing");
 assert.match(workflow, /workflows:\s*\n\s*-\s*Release/, "trusted publishing workflow must listen to the Release workflow");
-assert.match(workflow, /gh run download/, "trusted publishing workflow must download artifacts from the Release run");
+assert.match(workflow, /gh release download/, "trusted publishing workflow must download release assets");
 
 const readme = read("README.md");
 assert.match(readme, /npm install -g rust-silk/, "README must document npm global install");

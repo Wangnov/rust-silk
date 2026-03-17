@@ -1,6 +1,12 @@
 name: Publish npm
 
 on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to publish to npm, for example v0.1.3
+        required: true
+        type: string
   workflow_run:
     workflows:
       - Release
@@ -9,7 +15,7 @@ on:
 
 jobs:
   publish-npm:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -20,7 +26,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
           submodules: recursive
           fetch-depth: 0
@@ -35,19 +40,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag=$(git tag --points-at "${{ github.event.workflow_run.head_sha }}" | head -n 1)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.release_tag }}"
+          else
+            tag=$(git tag --points-at "${{ github.event.workflow_run.head_sha }}" | head -n 1)
+          fi
           if [ -z "$tag" ]; then
             echo "No git tag found for workflow run head SHA" >&2
             exit 1
           fi
           echo "RELEASE_VERSION=$tag" >> "$GITHUB_ENV"
 
-      - name: Download Release workflow artifacts
+      - name: Download release assets
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          gh run download "${{ github.event.workflow_run.id }}" --dir artifacts
+          gh release download "${RELEASE_VERSION}" --dir artifacts --pattern '*'
 
       - name: Prepare npm packages
         run: |

@@ -91,7 +91,7 @@ function findArchive(distTarget, files) {
     const base = path.basename(file);
     return (
       base.includes(distTarget) &&
-      (base.endsWith(".tar.gz") || base.endsWith(".zip"))
+      (base.endsWith(".tar.gz") || base.endsWith(".tar.xz") || base.endsWith(".zip"))
     );
   });
 
@@ -125,7 +125,17 @@ function extractArchive(archivePath, outputDir) {
     return;
   }
 
-  run("tar", ["-xzf", archivePath, "-C", outputDir]);
+  if (archivePath.endsWith(".tar.gz")) {
+    run("tar", ["-xzf", archivePath, "-C", outputDir]);
+    return;
+  }
+
+  if (archivePath.endsWith(".tar.xz")) {
+    run("tar", ["-xJf", archivePath, "-C", outputDir]);
+    return;
+  }
+
+  fail(`unsupported archive format: ${archivePath}`);
 }
 
 function walk(dirPath) {
