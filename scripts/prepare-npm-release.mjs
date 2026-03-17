@@ -83,7 +83,7 @@ function listArtifactFiles() {
     fail(`artifact directory not found: ${distDir}`);
   }
 
-  return fs.readdirSync(distDir).map((entry) => path.join(distDir, entry));
+  return walk(distDir);
 }
 
 function findArchive(distTarget, files) {
