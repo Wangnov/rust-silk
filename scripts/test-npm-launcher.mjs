@@ -37,6 +37,10 @@ assert.match(workflow, /workflow_dispatch:/, "trusted publishing workflow must s
 assert.match(workflow, /workflows:\s*\n\s*-\s*Release/, "trusted publishing workflow must listen to the Release workflow");
 assert.match(workflow, /gh release download/, "trusted publishing workflow must download release assets");
 
+const ciWorkflow = read(".github/workflows/ci.yml");
+assert.match(ciWorkflow, /actions\/setup-node@v4/, "CI must install Node before npm smoke checks");
+assert.match(ciWorkflow, /test-npm-launcher\.mjs/, "CI must run the npm launcher smoke checks");
+
 const readme = read("README.md");
 assert.match(readme, /npm install -g rust-silk/, "README must document npm global install");
 

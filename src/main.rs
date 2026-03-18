@@ -12,6 +12,7 @@ const MAX_INPUT_FRAMES: usize = 5;
 const FRAME_LENGTH_MS: i32 = 20;
 const MAX_FRAME_LENGTH_MS: i32 = 60;
 const MAX_API_FS_HZ: i32 = 48_000;
+const MAX_INTERNAL_FS_HZ: i32 = 24_000;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
@@ -111,7 +112,7 @@ encode options:\n\
   -i, --input <path>           input PCM s16le or WAV (or - for stdin)\n\
   -o, --output <path>          output .silk (or - for stdout)\n\
   --sample-rate <Hz>           default 24000\n\
-  --max-internal <Hz>          default = sample-rate\n\
+  --max-internal <Hz>          default = min(sample-rate, 24000)\n\
   --packet-ms <ms>             default 20\n\
   --bitrate <bps>              default 25000\n\
   --loss <percent>             default 0\n\
@@ -162,7 +163,7 @@ fn parse_encode_args(mut args: impl Iterator<Item = String>) -> Result<EncodeArg
                 sample_rate = parse_i32(args.next(), "sample-rate")?;
                 sample_rate_set = true;
                 if !max_internal_set {
-                    max_internal_rate = sample_rate;
+                    max_internal_rate = default_max_internal_rate(sample_rate);
                 }
             }
             "--max-internal" => {
@@ -305,7 +306,7 @@ fn encode(mut args: EncodeArgs) -> Result<(), String> {
             args.sample_rate = wav.sample_rate;
         }
         if !args.max_internal_set {
-            args.max_internal_rate = args.sample_rate;
+            args.max_internal_rate = default_max_internal_rate(args.sample_rate);
         }
     }
 
@@ -321,22 +322,16 @@ fn encode(mut args: EncodeArgs) -> Result<(), String> {
             args.sample_rate
         ));
     }
-    if args.max_internal_rate <= 0 || args.max_internal_rate > MAX_API_FS_HZ {
+    if args.max_internal_rate <= 0 || args.max_internal_rate > MAX_INTERNAL_FS_HZ {
         return Err(format!(
-            "max-internal out of range (8000-48000): {}",
+            "max-internal out of range (8000-24000): {}",
             args.max_internal_rate
         ));
     }
-    if !is_supported_sample_rate(args.max_internal_rate) {
+    if !is_supported_internal_sample_rate(args.max_internal_rate) {
         return Err(format!(
-            "max-internal must be one of 8000, 12000, 16000, 24000, 48000: {}",
+            "max-internal must be one of 8000, 12000, 16000, 24000: {}",
             args.max_internal_rate
-        ));
-    }
-    if args.max_internal_rate < args.sample_rate {
-        return Err(format!(
-            "max-internal must be >= sample-rate ({} < {})",
-            args.max_internal_rate, args.sample_rate
         ));
     }
 
@@ -982,7 +977,8 @@ fn open_input(path: &PathBuf) -> Result<InputSource, String> {
         return Err("empty input".into());
     }
     if read >= 12 && &prefix[0..4] == b"RIFF" && &prefix[8..12] == b"WAVE" {
-        let info = parse_wav_header(&mut *reader)?;
+        let (info, data_len) = parse_wav_header(&mut *reader)?;
+        let reader = Box::new(reader.take(data_len as u64));
         return Ok(InputSource {
             reader,
             wav: Some(info),
@@ -996,9 +992,9 @@ fn open_input(path: &PathBuf) -> Result<InputSource, String> {
     })
 }
 
-fn parse_wav_header(reader: &mut dyn Read) -> Result<WavInfo, String> {
+fn parse_wav_header(reader: &mut dyn Read) -> Result<(WavInfo, u32), String> {
     let mut fmt_info: Option<(u16, u16, u32)> = None;
-    loop {
+    let data_len = loop {
         let mut chunk_id = [0u8; 4];
         if reader.read_exact(&mut chunk_id).is_err() {
             return Err("wav: missing chunk header".into());
@@ -1033,7 +1029,7 @@ fn parse_wav_header(reader: &mut dyn Read) -> Result<WavInfo, String> {
                 fmt_info = Some((channels, bits_per_sample, sample_rate));
             }
             b"data" => {
-                break;
+                break size;
             }
             _ => {
                 skip_bytes(reader, size as usize)?;
@@ -1042,13 +1038,16 @@ fn parse_wav_header(reader: &mut dyn Read) -> Result<WavInfo, String> {
         if size % 2 == 1 {
             skip_bytes(reader, 1)?;
         }
-    }
+    };
     let (channels, bits_per_sample, sample_rate) = fmt_info.ok_or("wav: missing fmt chunk")?;
-    Ok(WavInfo {
-        sample_rate: sample_rate as i32,
-        channels,
-        bits_per_sample,
-    })
+    Ok((
+        WavInfo {
+            sample_rate: sample_rate as i32,
+            channels,
+            bits_per_sample,
+        },
+        data_len,
+    ))
 }
 
 fn skip_bytes(reader: &mut dyn Read, mut size: usize) -> Result<(), String> {
@@ -1111,8 +1110,16 @@ fn has_wav_extension(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+fn default_max_internal_rate(sample_rate: i32) -> i32 {
+    sample_rate.min(MAX_INTERNAL_FS_HZ)
+}
+
 fn is_supported_sample_rate(rate: i32) -> bool {
     matches!(rate, 8_000 | 12_000 | 16_000 | 24_000 | 48_000)
+}
+
+fn is_supported_internal_sample_rate(rate: i32) -> bool {
+    matches!(rate, 8_000 | 12_000 | 16_000 | 24_000)
 }
 
 fn main() {
@@ -1205,6 +1212,42 @@ mod tests {
                 .write_all(&sample.to_le_bytes())
                 .expect("write wav data");
         }
+    }
+
+    fn write_wav_with_trailing_chunk(
+        path: &PathBuf,
+        sample_rate: i32,
+        samples: &[i16],
+        chunk_id: [u8; 4],
+        payload: &[u8],
+    ) {
+        let data_len = (samples.len() * 2) as u32;
+        let padded_payload_len = payload.len() + (payload.len() % 2);
+        let riff_size = 36u32 + data_len + 8u32 + padded_payload_len as u32;
+        let mut bytes = Vec::with_capacity(riff_size as usize + 8);
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&riff_size.to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        bytes.extend_from_slice(b"fmt ");
+        bytes.extend_from_slice(&16u32.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&(sample_rate as u32).to_le_bytes());
+        bytes.extend_from_slice(&((sample_rate as u32) * 2).to_le_bytes());
+        bytes.extend_from_slice(&2u16.to_le_bytes());
+        bytes.extend_from_slice(&16u16.to_le_bytes());
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&data_len.to_le_bytes());
+        for sample in samples {
+            bytes.extend_from_slice(&sample.to_le_bytes());
+        }
+        bytes.extend_from_slice(&chunk_id);
+        bytes.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(payload);
+        if payload.len() % 2 == 1 {
+            bytes.push(0);
+        }
+        fs::write(path, bytes).expect("write wav with trailing chunk");
     }
 
     fn assert_roundtrip(tencent: bool) {
@@ -1322,6 +1365,70 @@ mod tests {
             output_samples.len(),
             input_samples.len(),
             "decoded length mismatch for wav input"
+        );
+    }
+
+    #[test]
+    fn roundtrip_48k_input_uses_24k_internal_rate() {
+        let dir = temp_dir("rust-silk-48k");
+        let input = dir.join("input.pcm");
+        let silk = dir.join("audio.silk");
+        let output = dir.join("output.pcm");
+        let sample_rate = 48_000;
+        let input_samples = write_pcm(&input, sample_rate, 0.2);
+
+        let enc = parse_encode_args(
+            [
+                "--input".to_string(),
+                input.to_string_lossy().into_owned(),
+                "--output".to_string(),
+                silk.to_string_lossy().into_owned(),
+                "--sample-rate".to_string(),
+                sample_rate.to_string(),
+                "--quiet".to_string(),
+            ]
+            .into_iter(),
+        )
+        .expect("parse 48k encode args");
+        assert_eq!(enc.max_internal_rate, 24_000);
+
+        encode(enc).expect("encode 48k");
+
+        let dec = DecodeArgs {
+            input: silk.clone(),
+            output: output.clone(),
+            sample_rate,
+            wav: false,
+            tolerant: TolerantMode::Off,
+            stats: false,
+            reference: None,
+            quiet: true,
+        };
+        decode(dec).expect("decode 48k");
+
+        let output_samples = read_pcm(&output);
+        assert_eq!(
+            output_samples.len(),
+            input_samples.len(),
+            "decoded length mismatch for 48k input"
+        );
+    }
+
+    #[test]
+    fn wav_reader_stops_at_data_chunk_boundary() {
+        let dir = temp_dir("rust-silk-wav-data-boundary");
+        let wav = dir.join("input.wav");
+        let sample_rate = 24_000;
+        let expected_samples = write_pcm(&dir.join("input.pcm"), sample_rate, 0.1);
+        write_wav_with_trailing_chunk(&wav, sample_rate, &expected_samples, *b"JUNK", b"ABCD");
+
+        let input = open_input(&wav).expect("open wav");
+        assert!(input.wav.is_some(), "expected WAV metadata");
+
+        let actual_samples = read_all_i16(input.reader).expect("read wav samples");
+        assert_eq!(
+            actual_samples, expected_samples,
+            "reader must stop at declared data chunk length"
         );
     }
 }

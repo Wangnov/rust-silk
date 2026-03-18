@@ -85,6 +85,7 @@ rust-silk decode -i input.silk -o output.wav --metrics --reference ref.wav
 ### 采样率说明
 
 支持：8000 / 12000 / 16000 / 24000 / 48000 Hz。
+编码 48000 Hz 输入时，默认会使用 24000 Hz 的内部采样率；如需覆盖，可用 `--max-internal` 显式指定 8000 / 12000 / 16000 / 24000。
 若输入 WAV 采样率不匹配，将提示调整。
 
 ### License
@@ -175,6 +176,7 @@ rust-silk decode -i input.silk -o output.wav --metrics --reference ref.wav
 ### Sample rates
 
 Supported: 8000 / 12000 / 16000 / 24000 / 48000 Hz.
+When encoding 48000 Hz input, the CLI defaults the internal sample rate to 24000 Hz; use `--max-internal` to override it with 8000 / 12000 / 16000 / 24000.
 If the WAV sample rate doesn’t match, the CLI will prompt you to adjust it.
 
 ### License
