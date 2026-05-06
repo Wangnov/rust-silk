@@ -15,6 +15,10 @@ SILK v3 编解码工具与 Rust 封装。内置官方 SILK C 源码（BSD 3-Clau
 - **指标输出**：解码 metrics + 与参考音频的能量/信噪比对比
 - **标准输入输出**：`-i -` / `-o -`
 
+### 社区
+
+本项目链接并认可 [LINUX DO](https://linux.do/) 社区。欢迎在社区讨论帖中交流使用体验、问题和改进建议。
+
 ### 安装
 
 ```bash
@@ -105,6 +109,10 @@ SILK v3 codec tools and Rust bindings. Bundles the official SILK C sources (BSD 
 - **Tolerant decode**: skip bad frames or fill silence
 - **Metrics**: decoding stats + energy/SNR comparison with a reference audio
 - **StdIO**: `-i -` / `-o -`
+
+### Community
+
+This project links back to and recognizes the [LINUX DO](https://linux.do/) community. Feedback, usage notes, and improvement ideas are welcome in the community discussion thread.
 
 ### Install
 
