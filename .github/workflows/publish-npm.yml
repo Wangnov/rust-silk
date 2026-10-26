@@ -77,7 +77,7 @@ jobs:
             if npm view "$name@$version" version >/dev/null 2>&1; then
               echo "$name@$version already published"
             else
-              npm publish "$dir" --provenance --access public --loglevel=verbose
+              npm publish "./$dir" --provenance --access public --loglevel=verbose
             fi
           done
 
@@ -90,7 +90,7 @@ jobs:
           if npm view "rust-silk@$version" version >/dev/null 2>&1; then
             echo "rust-silk@$version already published"
           else
-            npm publish npm/main --provenance --access public --loglevel=verbose
+            npm publish ./npm/main --provenance --access public --loglevel=verbose
           fi
 
       - name: Pack without publishing
@@ -98,7 +98,7 @@ jobs:
         shell: bash
         run: |
           for dir in npm/platforms/* npm/main; do
-            npm pack "$dir" --dry-run
+            npm pack "./$dir" --dry-run
           done
 
       - name: Dispatch installation verification
