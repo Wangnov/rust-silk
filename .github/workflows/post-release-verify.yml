@@ -33,8 +33,8 @@ jobs:
           set -euo pipefail
           version="${RELEASE_VERSION#v}"
           for attempt in {1..60}; do
-            if npm view "rust-silk@$version" version --prefer-online --fetch-timeout=15000 --fetch-retries=0; then
-              npm install --prefix smoke-install "rust-silk@$version" --no-audit --no-fund
+            if npm view "rust-silk@$version" version --prefer-online --fetch-timeout=15000 --fetch-retries=0 &&
+              npm install --prefix smoke-install "rust-silk@$version" --no-audit --no-fund --prefer-online --fetch-timeout=15000 --fetch-retries=0; then
               exit 0
             fi
             sleep 5
