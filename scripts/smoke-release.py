@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import struct
 import subprocess
+import sys
 import tarfile
 import tempfile
 import zipfile
@@ -39,6 +40,7 @@ def extract_binary(archive, destination):
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser()
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--archive", type=Path)
