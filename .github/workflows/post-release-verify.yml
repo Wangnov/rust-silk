@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   npm-install:
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -21,6 +22,8 @@ jobs:
       RELEASE_VERSION: ${{ inputs.release_tag }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_tag }}
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -29,8 +32,8 @@ jobs:
         run: |
           set -euo pipefail
           version="${RELEASE_VERSION#v}"
-          for attempt in {1..12}; do
-            if npm view "rust-silk@$version" version; then
+          for attempt in {1..60}; do
+            if npm view "rust-silk@$version" version --prefer-online --fetch-timeout=15000 --fetch-retries=0; then
               npm install --prefix smoke-install "rust-silk@$version" --no-audit --no-fund
               exit 0
             fi

@@ -77,7 +77,15 @@ jobs:
             if npm view "$name@$version" version >/dev/null 2>&1; then
               echo "$name@$version already published"
             else
-              npm publish "./$dir" --provenance --access public --loglevel=verbose
+              if npm publish "./$dir" --provenance --access public --loglevel=verbose > publish-result.log 2>&1; then
+                cat publish-result.log
+              else
+                cat publish-result.log
+                if ! grep -Fq "You cannot publish over the previously published versions: $version." publish-result.log; then
+                  exit 1
+                fi
+                echo "$name@$version already accepted; registry metadata is still propagating"
+              fi
             fi
           done
 
@@ -90,7 +98,15 @@ jobs:
           if npm view "rust-silk@$version" version >/dev/null 2>&1; then
             echo "rust-silk@$version already published"
           else
-            npm publish ./npm/main --provenance --access public --loglevel=verbose
+            if npm publish ./npm/main --provenance --access public --loglevel=verbose > publish-result.log 2>&1; then
+              cat publish-result.log
+            else
+              cat publish-result.log
+              if ! grep -Fq "You cannot publish over the previously published versions: $version." publish-result.log; then
+                exit 1
+              fi
+              echo "rust-silk@$version already accepted; registry metadata is still propagating"
+            fi
           fi
 
       - name: Pack without publishing
@@ -103,4 +119,4 @@ jobs:
 
       - name: Dispatch installation verification
         if: ${{ !inputs.dry_run }}
-        run: gh workflow run post-release-verify.yml --ref "$RELEASE_VERSION" -f "release_tag=$RELEASE_VERSION"
+        run: gh workflow run post-release-verify.yml --ref main -f "release_tag=$RELEASE_VERSION"
