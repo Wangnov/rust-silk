@@ -418,7 +418,7 @@ fn encode(mut args: EncodeArgs) -> Result<(), String> {
         }
         total_input_samples += (read / 2) as u64;
 
-        for (idx, chunk) in buffer.chunks_exact(2).enumerate() {
+        for (idx, chunk) in buffer.as_chunks::<2>().0.iter().enumerate() {
             samples[idx] = i16::from_le_bytes([chunk[0], chunk[1]]);
         }
 
@@ -1107,7 +1107,9 @@ fn read_all_i16(mut reader: Box<dyn Read>) -> Result<Vec<i16>, String> {
         bytes.pop();
     }
     Ok(bytes
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
         .collect())
 }
@@ -1204,7 +1206,9 @@ mod tests {
     fn read_pcm(path: &PathBuf) -> Vec<i16> {
         let bytes = fs::read(path).expect("read pcm");
         bytes
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
             .collect()
     }
