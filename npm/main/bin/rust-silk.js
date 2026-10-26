@@ -20,7 +20,7 @@ const BINARY_PACKAGES = {
     packageName: "rust-silk-linux-x64-gnu",
     binaryName: "rust-silk",
   },
-  "win32-x64-msvc": {
+  "win32-x64": {
     packageName: "rust-silk-windows-x64-msvc",
     binaryName: "rust-silk.exe",
   },

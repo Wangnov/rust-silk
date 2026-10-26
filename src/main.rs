@@ -409,7 +409,8 @@ fn encode(mut args: EncodeArgs) -> Result<(), String> {
             }
             read += n;
         }
-        if read == 0 {
+        // EOF 时补齐当前分包，避免已交给 SDK 的尾帧被丢弃。
+        if read == 0 && smpls_since_last_packet == 0 {
             break;
         }
         if read < buffer.len() {
@@ -503,8 +504,10 @@ fn decode(args: DecodeArgs) -> Result<(), String> {
     if input_source.wav.is_some() {
         return Err("input appears to be WAV; expected silk".into());
     }
-    let mut input = input_source.reader;
+    decode_stream(args, input_source.reader)
+}
 
+fn decode_stream(args: DecodeArgs, mut input: Box<dyn Read>) -> Result<(), String> {
     let reference_samples = if let Some(path) = &args.reference {
         Some(load_reference_samples(path, args.sample_rate)?)
     } else {
@@ -567,13 +570,14 @@ fn decode(args: DecodeArgs) -> Result<(), String> {
 
     loop {
         let mut size_buf = [0u8; 2];
-        let read_size = input.read(&mut size_buf).map_err(|e| e.to_string())?;
-        if read_size == 0 {
-            break;
+        match input.read_exact(&mut size_buf[..1]) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::UnexpectedEof => break,
+            Err(err) => return Err(err.to_string()),
         }
-        if read_size < 2 {
-            return Err("truncated packet size".into());
-        }
+        input
+            .read_exact(&mut size_buf[1..])
+            .map_err(|_| "truncated packet size")?;
         let n_bytes = i16::from_le_bytes(size_buf);
         if n_bytes < 0 {
             break;
@@ -964,14 +968,20 @@ fn write_wav_header(out: &mut OutputTarget, wav: &WavState) -> Result<(), String
 
 fn open_input(path: &PathBuf) -> Result<InputSource, String> {
     let is_stdin = path.to_string_lossy() == "-";
-    let mut reader: Box<dyn Read> = if is_stdin {
+    let reader: Box<dyn Read> = if is_stdin {
         Box::new(std::io::stdin())
     } else {
         Box::new(File::open(path).map_err(|e| format!("open input: {e}"))?)
     };
-    let mut prefix = [0u8; 12];
+    input_from_reader(reader)
+}
+
+fn input_from_reader(mut reader: Box<dyn Read>) -> Result<InputSource, String> {
+    let mut prefix = Vec::with_capacity(12);
     let read = reader
-        .read(&mut prefix)
+        .by_ref()
+        .take(12)
+        .read_to_end(&mut prefix)
         .map_err(|e| format!("read input: {e}"))?;
     if read == 0 {
         return Err("empty input".into());
@@ -984,8 +994,7 @@ fn open_input(path: &PathBuf) -> Result<InputSource, String> {
             wav: Some(info),
         });
     }
-    let prefix_vec = prefix[..read].to_vec();
-    let chained = std::io::Cursor::new(prefix_vec).chain(reader);
+    let chained = std::io::Cursor::new(prefix).chain(reader);
     Ok(InputSource {
         reader: Box::new(chained),
         wav: None,
@@ -1250,13 +1259,13 @@ mod tests {
         fs::write(path, bytes).expect("write wav with trailing chunk");
     }
 
-    fn assert_roundtrip(tencent: bool) {
+    fn assert_roundtrip(tencent: bool, packet_ms: i32, seconds: f64) {
         let dir = temp_dir("rust-silk");
         let input = dir.join("input.pcm");
         let silk = dir.join("audio.silk");
         let output = dir.join("output.pcm");
         let sample_rate = 24_000;
-        let input_samples = write_pcm(&input, sample_rate, 1.0);
+        let input_samples = write_pcm(&input, sample_rate, seconds);
 
         let enc = EncodeArgs {
             input: input.clone(),
@@ -1265,7 +1274,7 @@ mod tests {
             sample_rate_set: true,
             max_internal_rate: sample_rate,
             max_internal_set: true,
-            packet_ms: 20,
+            packet_ms,
             bitrate: 25_000,
             loss: 0,
             fec: 0,
@@ -1290,9 +1299,11 @@ mod tests {
         decode(dec).expect("decode");
 
         let output_samples = read_pcm(&output);
+        let packet_samples = (packet_ms * sample_rate / 1000) as usize;
+        let expected_samples = input_samples.len().div_ceil(packet_samples) * packet_samples;
         assert_eq!(
             output_samples.len(),
-            input_samples.len(),
+            expected_samples,
             "decoded length mismatch"
         );
 
@@ -1307,16 +1318,135 @@ mod tests {
         assert!(out_energy > 0.0, "decoded audio is silent");
         let ratio = out_energy / in_energy.max(1.0);
         assert!(ratio > 0.01, "decoded energy too low: {ratio}");
+        fs::remove_dir_all(dir).expect("remove roundtrip fixture");
     }
 
     #[test]
     fn roundtrip_default_header() {
-        assert_roundtrip(false);
+        assert_roundtrip(false, 20, 1.0);
     }
 
     #[test]
     fn roundtrip_tencent_header() {
-        assert_roundtrip(true);
+        assert_roundtrip(true, 20, 1.0);
+    }
+
+    #[test]
+    fn roundtrip_partial_packets() {
+        for tencent in [false, true] {
+            for packet_ms in [20, 40, 60, 80, 100] {
+                for seconds in [0.005, 0.02, 0.1, 0.105, 1.0] {
+                    assert_roundtrip(tencent, packet_ms, seconds);
+                }
+            }
+        }
+    }
+
+    struct FragmentedReader {
+        inner: std::io::Cursor<Vec<u8>>,
+    }
+
+    impl Read for FragmentedReader {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let len = buf.len().min(1);
+            self.inner.read(&mut buf[..len])
+        }
+    }
+
+    fn fragmented_input(bytes: Vec<u8>) -> InputSource {
+        input_from_reader(Box::new(FragmentedReader {
+            inner: std::io::Cursor::new(bytes),
+        }))
+        .expect("read fragmented input")
+    }
+
+    #[test]
+    fn fragmented_silk_matches_file_decode() {
+        for tencent in [false, true] {
+            let dir = temp_dir("rust-silk-fragmented");
+            let input = dir.join("input.pcm");
+            let silk = dir.join("audio.silk");
+            let output = dir.join("output.pcm");
+            let expected = dir.join("expected.pcm");
+            write_pcm(&input, 24_000, 0.1);
+            let mut enc_args = vec![
+                "-i".to_string(),
+                input.to_string_lossy().into_owned(),
+                "-o".to_string(),
+                silk.to_string_lossy().into_owned(),
+                "--quiet".to_string(),
+            ];
+            if tencent {
+                enc_args.push("--tencent".to_string());
+            }
+            encode(parse_encode_args(enc_args.into_iter()).expect("parse encode args"))
+                .expect("encode fixture");
+            let dec = |output: &Path| {
+                parse_decode_args(
+                    [
+                        "-i".to_string(),
+                        silk.to_string_lossy().into_owned(),
+                        "-o".to_string(),
+                        output.to_string_lossy().into_owned(),
+                        "--quiet".to_string(),
+                    ]
+                    .into_iter(),
+                )
+                .expect("parse decode args")
+            };
+            decode(dec(&expected)).expect("decode file");
+            let input = fragmented_input(fs::read(&silk).expect("read silk"));
+            decode_stream(dec(&output), input.reader).expect("decode fragmented silk");
+            assert_eq!(
+                fs::read(&output).expect("read fragmented decode"),
+                fs::read(&expected).expect("read file decode")
+            );
+            fs::remove_dir_all(dir).expect("remove fragmented fixture");
+        }
+    }
+
+    #[test]
+    fn fragmented_wav_preserves_metadata_and_samples() {
+        let dir = temp_dir("rust-silk-fragmented-wav");
+        let wav = dir.join("input.wav");
+        let samples = write_pcm(&dir.join("input.pcm"), 16_000, 0.1);
+        write_wav(&wav, 16_000, &samples);
+        let input = fragmented_input(fs::read(&wav).expect("read wav"));
+        let info = input.wav.expect("recognize fragmented WAV header");
+        assert_eq!(info.sample_rate, 16_000);
+        assert_eq!(info.channels, 1);
+        assert_eq!(info.bits_per_sample, 16);
+        assert_eq!(read_all_i16(input.reader).expect("read samples"), samples);
+        fs::remove_dir_all(dir).expect("remove fragmented WAV fixture");
+    }
+
+    #[test]
+    fn fragmented_truncated_packets_are_rejected() {
+        let dir = temp_dir("rust-silk-truncated");
+        for (suffix, expected_error) in [
+            (vec![1], "truncated packet size"),
+            (vec![2, 0, 42], "truncated payload"),
+        ] {
+            let mut bytes = SILK_HEADER.as_bytes().to_vec();
+            bytes.extend(suffix);
+            let input = fragmented_input(bytes);
+            let args = parse_decode_args(
+                [
+                    "-i".to_string(),
+                    "-".to_string(),
+                    "-o".to_string(),
+                    dir.join("output.pcm").to_string_lossy().into_owned(),
+                    "--quiet".to_string(),
+                ]
+                .into_iter(),
+            )
+            .expect("parse decode args");
+            assert_eq!(
+                decode_stream(args, input.reader).unwrap_err(),
+                expected_error
+            );
+        }
+        fs::remove_dir_all(dir).expect("remove truncated fixtures");
     }
 
     #[test]

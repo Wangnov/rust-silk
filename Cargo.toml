@@ -4,7 +4,7 @@ version = "0.1.3"
 edition = "2024"
 description = "SILK v3 encoder/decoder with a practical CLI"
 license = "BSD-3-Clause"
-repository = "https://github.com/wangnov/rust-silk"
+repository = "https://github.com/Wangnov/rust-silk"
 readme = "README.md"
 keywords = ["silk", "audio", "codec", "voice"]
 categories = ["command-line-utilities", "multimedia::audio"]
@@ -22,3 +22,11 @@ strip = "symbols"
 
 [package.metadata.release]
 tag-name = "v{{version}}"
+
+[package.metadata.binstall]
+pkg-fmt = "txz"
+bin-dir = "{name}-{target}/{bin}{binary-ext}"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+bin-dir = "{bin}{binary-ext}"

@@ -92,6 +92,8 @@ rust-silk decode -i input.silk -o output.wav --metrics --reference ref.wav
 编码 48000 Hz 输入时，默认会使用 24000 Hz 的内部采样率；如需覆盖，可用 `--max-internal` 显式指定 8000 / 12000 / 16000 / 24000。
 若输入 WAV 采样率不匹配，将提示调整。
 
+编码时，不足一个分包的尾部会补静音到完整分包，保留全部输入音频。因此，解码后的时长可能比原始音频略长，增加量小于 `--packet-ms`（默认 20 ms）。
+
 ### License
 
 本项目整体遵循 BSD 3-Clause；其中包含的 SILK C 源码版权归 Skype Limited 所有。
@@ -186,6 +188,8 @@ rust-silk decode -i input.silk -o output.wav --metrics --reference ref.wav
 Supported: 8000 / 12000 / 16000 / 24000 / 48000 Hz.
 When encoding 48000 Hz input, the CLI defaults the internal sample rate to 24000 Hz; use `--max-internal` to override it with 8000 / 12000 / 16000 / 24000.
 If the WAV sample rate doesn’t match, the CLI will prompt you to adjust it.
+
+Encoding pads an incomplete final packet with silence to preserve all input audio. The decoded duration may therefore be slightly longer than the input, by less than `--packet-ms` (20 ms by default).
 
 ### License
 

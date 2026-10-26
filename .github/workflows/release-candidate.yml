@@ -1,0 +1,53 @@
+name: Release candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - uses: cargo-bins/cargo-binstall@v1.18.1
+      - name: Install cargo-dist
+        run: cargo binstall cargo-dist --version 0.30.3 --no-confirm
+      - name: Build release archive
+        run: dist build --artifacts=local --target ${{ matrix.target }}
+      - name: Verify release archive and npm launcher
+        shell: bash
+        run: |
+          for archive in target/distrib/rust-silk-${{ matrix.target }}.tar.xz target/distrib/rust-silk-${{ matrix.target }}.zip; do
+            if [ -f "$archive" ]; then
+              python scripts/smoke-release.py --archive "$archive"
+              exit 0
+            fi
+          done
+          echo "Release archive missing" >&2
+          exit 1
+      - uses: actions/upload-artifact@v6
+        with:
+          name: candidate-${{ matrix.target }}
+          path: |
+            target/distrib/rust-silk-${{ matrix.target }}.tar.xz
+            target/distrib/rust-silk-${{ matrix.target }}.zip

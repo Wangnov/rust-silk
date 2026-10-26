@@ -5,11 +5,11 @@
   "license": "BSD-3-Clause",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wangnov/rust-silk.git"
+    "url": "git+https://github.com/Wangnov/rust-silk.git"
   },
-  "homepage": "https://github.com/wangnov/rust-silk",
+  "homepage": "https://github.com/Wangnov/rust-silk",
   "bugs": {
-    "url": "https://github.com/wangnov/rust-silk/issues"
+    "url": "https://github.com/Wangnov/rust-silk/issues"
   },
   "bin": {
     "rust-silk": "bin/rust-silk.js"

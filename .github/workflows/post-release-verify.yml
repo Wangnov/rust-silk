@@ -1,0 +1,41 @@
+name: Post Release Verify
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  npm-install:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-24.04-arm, macos-15, macos-15-intel, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    env:
+      RELEASE_VERSION: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Install published npm package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_VERSION#v}"
+          for attempt in {1..12}; do
+            if npm view "rust-silk@$version" version; then
+              npm install --prefix smoke-install "rust-silk@$version" --no-audit --no-fund
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
+      - name: Verify installed CLI
+        run: python scripts/smoke-release.py --launcher smoke-install/node_modules/rust-silk/bin/rust-silk.js
